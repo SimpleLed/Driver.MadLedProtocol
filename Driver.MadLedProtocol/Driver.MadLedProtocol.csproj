@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Interface\SimpleLed\SimpleLed.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="HidSharp">
+      <HintPath>..\..\Driver.HyperXAlloy.RGB\Driver.HyperXAlloy.RGB\packages\HidSharp.2.1.0\lib\net35\HidSharp.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
