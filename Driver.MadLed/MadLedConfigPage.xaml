@@ -1,0 +1,72 @@
+﻿<UserControl
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Driver.MadLed"
+             xmlns:System="clr-namespace:System;assembly=mscorlib" x:Class="Driver.MadLed.MadLedConfigPage"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <UserControl.Resources>
+        <DataTemplate x:Key="DataTemplate1">
+            <Grid Width="130" Background="#40000000" Margin="0" Height="200">
+            <StackPanel Margin="5">
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <Label Content="Pin " VerticalAlignment="Center" FontFamily="Segoe UI" FontSize="12"></Label>
+                        <TextBlock Text="{Binding Pin}" Foreground="White"  VerticalAlignment="Center"  FontFamily="Segoe UI" FontSize="12"/>
+                </StackPanel>
+                    <TextBox Text="{Binding Name}" Foreground="White"  Margin="0,5"/>
+                    <ComboBox  Margin="0,5" SelectedIndex="{Binding DeviceClass}" FontFamily="Segoe UI" FontSize="12">
+                    <ComboBoxItem Content="Fan"></ComboBoxItem>
+                    <ComboBoxItem Content="LedStrip"></ComboBoxItem>
+                    <ComboBoxItem Content="GPU"></ComboBoxItem>
+                    <ComboBoxItem Content="MotherBoard"></ComboBoxItem>
+                    <ComboBoxItem Content="Keyboard"></ComboBoxItem>
+                    <ComboBoxItem Content="Keypad"></ComboBoxItem>
+                    <ComboBoxItem Content="Mouse"></ComboBoxItem>
+                    <ComboBoxItem Content="MousePad"></ComboBoxItem>
+                    <ComboBoxItem Content="Headset"></ComboBoxItem>
+                    <ComboBoxItem Content="HeadsetStand"></ComboBoxItem>
+                    <ComboBoxItem Content="PSU"></ComboBoxItem>
+                    <ComboBoxItem Content="Cooler"></ComboBoxItem>
+                    <ComboBoxItem Content="Memory"></ComboBoxItem>
+                    <ComboBoxItem Content="Speaker"></ComboBoxItem>
+                    <ComboBoxItem Content="Bulb"></ComboBoxItem>
+                    <ComboBoxItem Content="Other"></ComboBoxItem>
+                    <ComboBoxItem Content="AIO"></ComboBoxItem>
+                    <ComboBoxItem Content="WaterBlock"></ComboBoxItem>
+
+                </ComboBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <Label Content="# of LEDs: " VerticalAlignment="Center" FontFamily="Segoe UI" FontSize="12"></Label>
+                        <TextBox Text="{Binding LedCount}"  FontFamily="Segoe UI" Width="40" VerticalContentAlignment="Center" HorizontalContentAlignment="Right" FontSize="12"></TextBox>
+                </StackPanel>
+                
+            </StackPanel>
+                
+                    <Button Padding="5" Width ="55" Margin="5" FontFamily="Segoe UI" BorderThickness="0" Background="LightGreen" VerticalAlignment="Bottom" HorizontalAlignment="Left" Click="Button_Click" FontSize="12">Test</Button>
+                <Button Padding="5" Width ="55" Margin="5" FontFamily="Segoe UI" BorderThickness="0" Background="LightCoral" VerticalAlignment="Bottom" HorizontalAlignment="Right" Click="ButtonBase_OnClick" FontSize="12">Write</Button>
+                
+            </Grid>
+        </DataTemplate>
+        <ItemsPanelTemplate x:Key="ItemsPanelTemplate1">
+            <WrapPanel IsItemsHost="True"/>
+        </ItemsPanelTemplate>
+    </UserControl.Resources>
+    <Grid Background="#80000000">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock FontSize="24" Foreground="White"  FontFamily="Segoe UI"><Run Text="MadLed Config"/></TextBlock>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="10">
+                <Label Foreground="White" Content="Selected Device:"  FontFamily="Segoe UI"/>
+                <ComboBox x:Name="DevicesDropDown" Width="200" SelectionChanged="DevicesDropDown_OnSelectionChanged"  FontFamily="Segoe UI"/>
+            </StackPanel>
+        </StackPanel>
+        <Grid Grid.Row="1">
+            <ListView x:Name="PinsView" Background="{x:Null}" ItemTemplate="{DynamicResource DataTemplate1}" ItemsPanel="{DynamicResource ItemsPanelTemplate1}"  FontFamily="Segoe UI"/>
+        </Grid>
+    </Grid>
+</UserControl>

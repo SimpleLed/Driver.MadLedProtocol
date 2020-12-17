@@ -1,13 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
+using System.Windows.Controls;
 using HidSharp;
 using SimpleLed;
 
-namespace Driver.MadLedProtocol
+namespace Driver.MadLed
 {
-    public class MadLedProtocol : ISimpleLedWithConfig
+    public class MadLed : ISimpleLedWithConfig
     {
         public void Dispose()
         {
@@ -26,10 +28,10 @@ namespace Driver.MadLedProtocol
 
         public void Configure(DriverDetails driverDetails)
         {
-            
+
 
             config = new MadLedDevice.MadLedConfig();
-            config.PinConfigs=new MadLedDevice.PinConfig[8];
+            config.PinConfigs = new MadLedDevice.PinConfig[8];
             config.PinConfigs[2] = new MadLedDevice.PinConfig
             {
                 DeviceClass = 1,
@@ -47,7 +49,7 @@ namespace Driver.MadLedProtocol
 
         public void Push(ControlDevice controlDevice)
         {
-            MadLedControlDevice mlcd = (MadLedControlDevice) controlDevice;
+            MadLedControlDevice mlcd = (MadLedControlDevice)controlDevice;
 
             byte[] leds = new byte[mlcd.LEDs.Length * 3];
 
@@ -79,7 +81,7 @@ namespace Driver.MadLedProtocol
                 Id = Guid.Parse("5dcf474c-4bd0-4516-b871-f98ca885dbb0"),
                 Author = "MadNinja",
                 Blurb = "Driver for controlling MadLed controllers.",
-                CurrentVersion = new ReleaseNumber(1, 0, 0, 3),
+                CurrentVersion = new ReleaseNumber(1, 0, 0, 6),
                 GitHubLink = "https://github.com/SimpleLed/Driver.MadLedProtocol",
                 IsPublicRelease = false,
                 SupportedDevices = this.SupportedDevices
@@ -93,6 +95,12 @@ namespace Driver.MadLedProtocol
             return (T)proxy;
         }
 
+        public void SetColorProfile(ColorProfile value)
+        {
+        
+        }
+
+
         public void PutConfig<T>(T config) where T : SLSConfigData
         {
             this.config = config as MadLedDevice.MadLedConfig;
@@ -103,15 +111,26 @@ namespace Driver.MadLedProtocol
             return "MadLed";
         }
 
+        public static List<string> ConnectedMadLedUnits = new List<string>();
+
+        public static List<MadLedDevice> MadLedDevices = new List<MadLedDevice>();
         public void InterestedUSBChange(int VID, int PID, bool connected)
         {
             if (connected)
             {
-                var mld = new MadLedDevice(VID,PID);
+                var mld = new MadLedDevice(VID, PID);
 
                 if (mld.Success)
                 {
+                    ConnectedMadLedUnits.Add(mld.Serial);
 
+                    var remove = MadLedDevices.Where(x => x.Serial == mld.Serial);
+                    foreach (MadLedDevice madLedDevice in remove)
+                    {
+                        MadLedDevices.Remove(madLedDevice);
+                    }
+
+                    MadLedDevices.Add(mld);
                     for (int i = 0; i < 8; i++)
                     {
                         var pc = mld.GetConfigFromPin(i + 1, mld.stream);
@@ -133,7 +152,7 @@ namespace Driver.MadLedProtocol
                                 MadLedDevice = mld,
                                 LEDs = new ControlDevice.LedUnit[pc.LedCount],
                                 Driver = this,
-                                Pin = i+1
+                                Pin = i + 1
                             };
 
                             for (int p = 0; p < pc.LedCount; p++)
@@ -154,13 +173,14 @@ namespace Driver.MadLedProtocol
                         }
                     }
 
-                 
+
                     //mld.SendPacket(mld.stream, mld.SetConfigCmd(2, config.PinConfigs[2]));
+                    return;
                 }
             }
         }
 
-        private string[] deviceTypes = new[]
+        public static string[] deviceTypes = new[]
         {
             "Fan",
             "LedStrip",
@@ -213,7 +233,7 @@ namespace Driver.MadLedProtocol
 
                 int attempts = 0;
                 bool success = false;
-                
+
 
                 while (attempts < 10 && !success)
                 {
@@ -243,7 +263,7 @@ namespace Driver.MadLedProtocol
                         VID = vid;
                         PID = pid;
 
-                        
+
                     }
                     catch (Exception ep)
                     {
@@ -363,23 +383,23 @@ namespace Driver.MadLedProtocol
                     return null;
                 }
 
-                var pc =new PinConfig();
+                var pc = new PinConfig();
 
                 pc.Pin = ret[2];
                 pc.LedCount = ret[3];
                 pc.DeviceClass = ret[4];
-                
+
                 for (int i = 5; i < 5 + 16; i++)
                 {
                     byte t = ret[i];
 
-                    if (t == 13 || t == 0 )
+                    if (t == 13 || t == 0)
                     {
                         break;
                     }
                     else
                     {
-                        pc.Name = pc.Name + (char) t;
+                        pc.Name = pc.Name + (char)t;
                     }
                 }
 
@@ -415,7 +435,7 @@ namespace Driver.MadLedProtocol
                     }
                     else
                     {
-                        r=r + (char)t;
+                        r = r + (char)t;
                     }
                 }
 
@@ -513,7 +533,7 @@ namespace Driver.MadLedProtocol
 
         public UserControl GetCustomConfig(ControlDevice controlDevice)
         {
-            throw new NotImplementedException();
+            return new MadLedConfigPage(this);
         }
 
         public bool GetIsDirty()
@@ -523,7 +543,12 @@ namespace Driver.MadLedProtocol
 
         public void SetIsDirty(bool val)
         {
-            
+
+        }
+
+        public void InvokeAdded(MadLedControlDevice mlcd)
+        {
+            DeviceAdded?.Invoke(this, new Events.DeviceChangeEventArgs(mlcd));
         }
     }
 }
