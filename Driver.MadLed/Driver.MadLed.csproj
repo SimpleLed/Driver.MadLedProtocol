@@ -42,6 +42,7 @@
     </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
+    <Reference Include="PresentationFramework.Aero2" />
     <Reference Include="SimpleLed, Version=1.0.0.4, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\..\Interface\SimpleLed\bin\Debug\SimpleLed.dll</HintPath>
     </Reference>
@@ -59,10 +60,12 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AutoRevision.cs" />
     <Compile Include="MadLed.cs" />
     <Compile Include="MadLedConfigPage.xaml.cs">
       <DependentUpon>MadLedConfigPage.xaml</DependentUpon>
     </Compile>
+    <Compile Include="MadLedDevice.cs" />
   </ItemGroup>
   <ItemGroup>
     <Page Include="MadLedConfigPage.xaml">

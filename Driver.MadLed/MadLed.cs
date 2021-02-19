@@ -1,52 +1,64 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Timers;
 using System.Windows.Controls;
 using HidSharp;
 using SimpleLed;
+using DeviceTypes = SimpleLed.DeviceTypes;
+using Timer = System.Timers.Timer;
 
 namespace Driver.MadLed
 {
     public class MadLed : ISimpleLedWithConfig
     {
+
+        public List<CustomDeviceSpecification> GetCustomDeviceSpecifications()
+        {
+            return new List<CustomDeviceSpecification>
+            {
+
+            };
+        }
+
+        public static int PacketSize = 64;
+        public static int IncomingPacketSize = 65;
         public void Dispose()
         {
 
         }
 
         private MadLedDevice.MadLedConfig config;
-        private List<MadLedControlDevice> controlDevices = new List<MadLedControlDevice>();
+
         public event Events.DeviceChangeEventHandler DeviceAdded;
         public event Events.DeviceChangeEventHandler DeviceRemoved;
 
         private List<USBDevice> SupportedDevices = new List<USBDevice>
         {
-            new USBDevice{VID = 0x1b4f, HID = 0x9207}
+            new USBDevice{VID = 0x1b4f, HID = 0x9207},
+            new USBDevice{VID = 0x1b4f, HID = 0x9204},
+            new USBDevice{VID = 0x2341, HID = 0x8036},
+            new USBDevice{VID = 0x1B1C, HID = 0x0C0B},
+            new USBDevice{VID = 0x1B4F, HID = 0x9206}
         };
-
         public void Configure(DriverDetails driverDetails)
         {
-
-
             config = new MadLedDevice.MadLedConfig();
             config.PinConfigs = new MadLedDevice.PinConfig[8];
-            config.PinConfigs[2] = new MadLedDevice.PinConfig
-            {
-                DeviceClass = 1,
-                LedCount = 19,
-                Name = "LED Strip"
-            };
-
-            foreach (USBDevice supportedDevice in SupportedDevices)
+            var connected = SimpleLed.SLSManager.GetSupportedDevices(SupportedDevices);
+            foreach (USBDevice supportedDevice in connected)
             {
                 InterestedUSBChange(supportedDevice.VID, supportedDevice.HID.Value, true);
             }
-
-
         }
 
+
+        private Timer presentTimer = null;
+        private float globalBrightness = 0.5f;
         public void Push(ControlDevice controlDevice)
         {
             MadLedControlDevice mlcd = (MadLedControlDevice)controlDevice;
@@ -56,18 +68,17 @@ namespace Driver.MadLed
             for (int i = 0; i < mlcd.LEDs.Length; i++)
             {
 
-                leds[(i * 3) + 0] = (byte)mlcd.LEDs[i].Color.Blue;
-                leds[(i * 3) + 1] = (byte)mlcd.LEDs[i].Color.Green;
-                leds[(i * 3) + 2] = (byte)mlcd.LEDs[i].Color.Red;
+                leds[(i * 3) + 0] = (byte)(mlcd.LEDs[i].Color.Blue * globalBrightness);
+                leds[(i * 3) + 1] = (byte)(mlcd.LEDs[i].Color.Green * globalBrightness);
+                leds[(i * 3) + 2] = (byte)(mlcd.LEDs[i].Color.Red * globalBrightness);
             }
 
             mlcd.MadLedDevice.SendLeds(mlcd.MadLedDevice.stream, leds, (byte)mlcd.Pin);
-            mlcd.MadLedDevice.PresentLeds(mlcd.MadLedDevice.stream);
         }
 
         public void Pull(ControlDevice controlDevice)
         {
-            //throw new NotImplementedException();
+            
         }
 
         public DriverProperties GetProperties()
@@ -81,12 +92,22 @@ namespace Driver.MadLed
                 Id = Guid.Parse("5dcf474c-4bd0-4516-b871-f98ca885dbb0"),
                 Author = "MadNinja",
                 Blurb = "Driver for controlling MadLed controllers.",
-                CurrentVersion = new ReleaseNumber(1, 0, 0, 6),
+                CurrentVersion = new ReleaseNumber(1, 0, 1, AutoRevision.BuildRev.BuildRevision),
                 GitHubLink = "https://github.com/SimpleLed/Driver.MadLedProtocol",
                 IsPublicRelease = false,
-                SupportedDevices = this.SupportedDevices
+                SupportedDevices = this.SupportedDevices,
+                SetDeviceOverride = SetDeviceOverride,
+                DeviceSpecifications = GetCustomDeviceSpecifications(),
+                GetMappers = GetMappers
             };
         }
+
+        private List<Type> GetMappers()
+        {
+            return new List<Type>();
+        }
+
+        
 
         public T GetConfig<T>() where T : SLSConfigData
         {
@@ -97,7 +118,7 @@ namespace Driver.MadLed
 
         public void SetColorProfile(ColorProfile value)
         {
-        
+
         }
 
 
@@ -116,68 +137,48 @@ namespace Driver.MadLed
         public static List<MadLedDevice> MadLedDevices = new List<MadLedDevice>();
         public void InterestedUSBChange(int VID, int PID, bool connected)
         {
+
+            //Thread.Sleep(30000);
             if (connected)
             {
-                var mld = new MadLedDevice(VID, PID);
+                var madLedDevices = MadLedDevice.GetMadLedDevices(VID, PID, this);
 
-                if (mld.Success)
+                foreach(var m in madLedDevices)
                 {
-                    ConnectedMadLedUnits.Add(mld.Serial);
-
-                    var remove = MadLedDevices.Where(x => x.Serial == mld.Serial);
-                    foreach (MadLedDevice madLedDevice in remove)
+                    var remove = MadLedDevices.Where(x => x.Serial == m.Serial);
+                    foreach (MadLedDevice madLedDevice in remove.ToList())
                     {
                         MadLedDevices.Remove(madLedDevice);
                     }
 
-                    MadLedDevices.Add(mld);
-                    for (int i = 0; i < 8; i++)
-                    {
-                        var pc = mld.GetConfigFromPin(i + 1, mld.stream);
-
-                        if (pc != null)
-                        {
-                            var pcfg = mld.SetConfigCmd(i + 1, pc);
-                            pcfg[1] = 10;
-                            //var pc = config.PinConfigs[i];
-                            mld.SendPacket(mld.stream, pcfg);
-                            mld.ReadReturnReport(mld.stream);
-
-
-                            MadLedControlDevice mlcd = new MadLedControlDevice
-                            {
-                                ConnectedTo = "Channel " + (i + 1),
-                                DeviceType = deviceTypes[pc.DeviceClass],
-                                Name = pc.Name,
-                                MadLedDevice = mld,
-                                LEDs = new ControlDevice.LedUnit[pc.LedCount],
-                                Driver = this,
-                                Pin = i + 1
-                            };
-
-                            for (int p = 0; p < pc.LedCount; p++)
-                            {
-                                mlcd.LEDs[p] = new ControlDevice.LedUnit
-                                {
-                                    Data = new ControlDevice.LEDData
-                                    {
-                                        LEDNumber = p
-                                    },
-                                    LEDName = "LED " + (p + 1),
-                                    Color = new LEDColor(0, 0, 0)
-                                };
-                            }
-
-                            DeviceAdded?.Invoke(this, new Events.DeviceChangeEventArgs(mlcd));
-
-                        }
-                    }
-
-
-                    //mld.SendPacket(mld.stream, mld.SetConfigCmd(2, config.PinConfigs[2]));
-                    return;
+                    ConnectedMadLedUnits.Add(m.Serial);
+                    MadLedDevices.Add(m);
                 }
             }
+            else
+            {
+
+            }
+        }
+
+        public void SetDeviceOverride(ControlDevice controlDevice, CustomDeviceSpecification deviceSpec)
+        {
+            controlDevice.LEDs = new ControlDevice.LedUnit[deviceSpec.LedCount];
+
+            for (int p = 0; p < deviceSpec.LedCount; p++)
+            {
+                controlDevice.LEDs[p] = new ControlDevice.LedUnit
+                {
+                    Data = new ControlDevice.LEDData
+                    {
+                        LEDNumber = p
+                    },
+                    LEDName = "LED " + (p + 1),
+                    Color = new LEDColor(0, 0, 0)
+                };
+            }
+
+            controlDevice.CustomDeviceSpecification = deviceSpec;
         }
 
         public static string[] deviceTypes = new[]
@@ -211,13 +212,156 @@ namespace Driver.MadLed
 
         public class MadLedDevice
         {
+            public List<MadLedControlDevice> ControlDevices = new List<MadLedControlDevice>();
             public HidStream stream = null;
             public bool Success;
             public int VID;
             public int PID;
             public string Serial;
-            public MadLedDevice(int vid, int pid)
+            public byte[] SupportedPins;
+            public MadLed Driver { get; set; }
+
+
+
+            private T HandleIncoming<T>(byte[] data)
             {
+                switch (data[2])
+                {
+                    case (127):
+                        byte pin = data[3];
+                        break;
+                    case (100):
+                        SupportedPins = new byte[data.Length - 3];
+
+                        int ii = 3;
+                        List<byte> supTempt = new List<byte>();
+                        while (ii < 64)
+                        {
+                            byte sp = data[ii];
+                            if (sp == 0)
+                            {
+                                break;
+                            }
+
+                            supTempt.Add(sp);
+
+                            ii++;
+                        }
+
+                        return (T)((object)supTempt.ToArray());
+                        
+                    case (134):
+                        var pc = new PinConfig();
+
+                        pc.Pin = data[3];
+                        pc.LedCount = data[4];
+                        pc.DeviceClass = data[5];
+
+                        for (int i = 6; i < 6 + 16; i++)
+                        {
+                            byte t = data[i];
+
+                            if (t == 13 || t == 0)
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                pc.Name = pc.Name + (char)t;
+                            }
+
+
+                        }
+
+                        return (T)((object)pc);
+
+
+                    case (2):
+
+                        string r = "";
+
+                        for (int i = 0; i < 16; i++)
+                        {
+                            byte t = data[i + 3];
+
+                            if (t == 13 || t == 0)
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                r = r + (char)t;
+                            }
+                        }
+
+                        //Debug.WriteLine("----------------------------------------------");
+                        //Debug.WriteLine(r);
+                        //Debug.WriteLine("----------------------------------------------");
+
+                        if (!r.StartsWith("MLG4"))
+                        {
+                            return default;
+                        }
+
+                        return (T)((object)r.Substring(4).Trim());
+                        
+
+                    default:
+                        Debug.WriteLine(data[2]);
+                        break;
+                }
+
+                return default;
+            }
+
+
+            private MadLedControlDevice SetUpPin(PinConfig pc)
+            {
+                if (pc.LedCount > 0 && pc.Name != null)
+                {
+                    string dt = "";
+                    if (pc.DeviceClass >= 0 && pc.DeviceClass < deviceTypes.Length)
+                    {
+                        dt = deviceTypes[pc.DeviceClass];
+
+
+                        MadLedControlDevice mlcd = new MadLedControlDevice
+                        {
+                            ConnectedTo = "Pin " + (pc.Pin),
+                            DeviceType = dt,
+                            Name = pc.Name,
+                            MadLedDevice = this,
+                            LEDs = new ControlDevice.LedUnit[pc.LedCount],
+                            Driver = this.Driver,
+                            Pin = pc.Pin,
+                            OverrideSupport = OverrideSupport.All,
+                        };
+
+                        for (int p = 0; p < pc.LedCount; p++)
+                        {
+                            mlcd.LEDs[p] = new ControlDevice.LedUnit
+                            {
+                                Data = new ControlDevice.LEDData { LEDNumber = p },
+                                LEDName = "LED " + (p + 1),
+                                Color = new LEDColor(0, 0, 0)
+                            };
+                        }
+
+                        return mlcd;
+                    }
+                }
+
+                return null;
+            }
+
+            public MadLedDevice()
+            {
+
+            }
+
+            public static List<MadLedDevice> GetMadLedDevices(int vid, int pid, MadLed madLed)
+            {
+                List<MadLedDevice> results = new List<MadLedDevice>();
                 var terp = new OpenConfiguration();
                 terp.SetOption(OpenOption.Transient, true);
 
@@ -231,108 +375,193 @@ namespace Driver.MadLed
                     devices = tempdevices;
                 }
 
+
                 int attempts = 0;
-                bool success = false;
-
-
-                while (attempts < 10 && !success)
+                
+                if (devices != null)
                 {
+                    foreach (HidDevice hidDevice in devices)
+                    {
+
+                        try
+                        { 
+
+                        device = hidDevice;
+                         byte[] t = device.GetRawReportDescriptor();
+                         var dddd = (device.GetFriendlyName());
+                         MadLedDevice nmld = new MadLedDevice();
+                         nmld.Driver = madLed;
+                         nmld.stream = device.Open(terp);
+
+                         nmld.stream.ReadTimeout = 1000;
+                         nmld.stream.WriteTimeout = 10000;
+                            
+                            string serial = nmld.GetSerial(nmld.stream);
+
+                            if (!string.IsNullOrWhiteSpace(serial))
+                            {
+                                nmld.Serial = serial;
+                                nmld.DeviceName = dddd;
+                                var pins = nmld.GetSupportedPins();
+                                nmld.SupportedPins = pins;
+                                foreach (byte pin in pins)
+                                {
+                                    var pc = nmld.GetConfigFromPin(pin, nmld.stream);
+                                    //nmld.SendPacket(nmld.stream, nmld.SetConfigCmd(pin,pc));
+                                    var mlcd = nmld.SetUpPin(pc);
+                                    if (mlcd != null)
+                                    {
+
+                                        nmld.ControlDevices.Add(mlcd);
+                                        nmld.Driver.InvokeAdded(mlcd);
+
+                                    }
+                                }
+
+
+                                nmld.VID = vid;
+                                nmld.PID = pid;
+
+                                results.Add(nmld);
+                            }
+
+                            
+                        }
+                        catch (Exception ep)
+                        {
+                            Console.WriteLine(ep.Message);
+                            attempts++;
+                            device = null;
+                            Thread.Sleep(100);
+                        }
+                    }
+                }
+
+                return results;
+            }
+            
+            public string DeviceName { get; set; }
+
+
+            public T ReadUsb<T>()
+            {
+                isTryingToReadUSB = true;
+                
                     try
                     {
-                        Console.WriteLine("Attempting connection");
-                        device = devices[attempts % devices.Count()];
-                        byte[] t = device.GetRawReportDescriptor();
-                        Console.WriteLine(device.GetFriendlyName());
-
-                        stream = device.Open(terp);
-                        SetCalibration(stream);
-                        Console.WriteLine("ooh, somting Happened!");
-                        string serial = GetSerial(stream);
-                        if (serial == null)
+                        if (stream != null)
                         {
-                            Console.WriteLine("device not correct");
-                            stream = null;
-                            return;
+                            if (stream.CanRead)
+                            {
+                                byte[] temp = new byte[64];
+                                var t = stream.Read(temp);
+
+                                if (t > 0)
+                                {
+                                    int cmd = temp[2];
+                                    return (T)HandleIncoming<T>(temp);
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                    }
+                
+
+                isTryingToReadUSB = false;
+                return default;
+
+            }
+
+            private bool isTryingToReadUSB = false;
+
+            public T SendPacket<T>(HidStream stream, byte[] packet, bool expandTo64Bytes = true)
+            {
+                SendPacket(stream, packet, expandTo64Bytes);
+                return ReadUsb<T>();
+            }
+            public void SendPacket(HidStream stream, byte[] packet, bool expandTo64Bytes = true)
+            {
+                try
+                {
+                    while (isSending)
+                    {
+                        Thread.Sleep(0);
+                    }
+
+                    if (packet.Length < 64)
+                    {
+                        byte[] tmp = new byte[64];
+                        for (int i = 0; i < packet.Length; i++)
+                        {
+                            tmp[i] = packet[i];
                         }
 
-                        Serial = serial.Substring(4);
-
-                        Success = true;
-                        //SendPacket(stream,0x60, 0);
-                        success = true;
-                        VID = vid;
-                        PID = pid;
-
-
+                        packet = tmp;
                     }
-                    catch (Exception ep)
-                    {
-                        Console.WriteLine(ep.Message);
-                        attempts++;
-                        device = null;
-                        Thread.Sleep(100);
-                    }
+
+                    isSending = true;
+                    stream.Write(packet);
+                    stream.Flush();
                 }
+                catch { }
 
-                if (device == null)
+                isSending = false;
+            }
+
+            public bool isSending = false;
+
+            short[] Get16BitColorAsShortArray(byte r, byte g, byte b)
+            {
+                return new short[]
                 {
-                    Console.WriteLine("no device found");
-                    stream = null;
-                    return;
-                }
+                    (short)(((r / 8) << 11) | ((g / 4) << 5) | (b / 8))
+
+                };
             }
 
-            public void SendPacket(HidStream stream, byte[] packet)
+            byte[] Get16BitColorAsBytes(byte r, byte g, byte b)
             {
-                stream.Write(packet);
-                //stream.SetFeature(packet);
-            }
-
-            public void PresentLeds(HidStream stream)
-            {
-                byte[] bufterd = new byte[63];
-                bufterd[0] = 3;
-                bufterd[1] = 3;
-                bufterd[2] = 3;
-                stream.Write(bufterd);
-
+                byte[] output = new byte[2];
+                Buffer.BlockCopy(Get16BitColorAsShortArray(r, g, b), 0, output, 0, 2);
+                return output;
             }
 
             public void SendLeds(HidStream stream, byte[] leds, byte pin)
             {
-                byte[] buf = new byte[63];
+                // Debug.WriteLine("Sending leds for "+pin);
+                byte[] buf = new byte[PacketSize];
                 buf[0] = 0;
-                buf[1] = 1;
+                buf[1] = 0;
                 buf[2] = pin;
                 byte page = 0;
                 int ld = 0;
                 int nmOfLds = leds.Length / 3;
-                int ldos = 0;
+                
                 while (ld < nmOfLds)
                 {
                     buf[3] = page;
                     int ps = 4;
-
-                    while (ld - ldos < 19 && ld < nmOfLds)
+                    int clc = 0;
+                    while (ps < 60 && ld < nmOfLds && clc < 26)
                     {
-
                         int ldp = ld * 3;
                         byte r = leds[ldp + 0];
                         byte g = leds[ldp + 1];
                         byte b = leds[ldp + 2];
-                        buf[ps] = g;
-                        buf[ps + 1] = b;
-                        buf[ps + 2] = r;
-                        ps = ps + 3;
+                        var smallColor = Get16BitColorAsBytes(r, g, b);
 
+                        buf[ps] = smallColor[0];
+                        buf[ps + 1] = smallColor[1];
+                        ps = ps + 2;
 
                         ld = ld + 1;
+
+                        clc++;
                     }
 
-                    ldos = ld;
-
-                    // DebugReport(buf);
-                    stream.Write(buf);
+                    SendPacket(stream, buf);
 
                     page++;
 
@@ -340,15 +569,23 @@ namespace Driver.MadLed
 
             }
 
+            public byte[] SetSupportedPinsCmd()
+            {
+                byte[] buf = new byte[3];
+
+                buf[1] = 99;
+
+                return buf;
+            }
             public byte[] SetConfigCmd(int pin, PinConfig pc)
             {
-                byte[] buf = new byte[65];
-                for (int i = 0; i < 65; i++)
+                byte[] buf = new byte[PacketSize];
+                for (int i = 0; i < PacketSize; i++)
                 {
                     buf[i] = 0;
                 }
                 buf[0] = 0; //iunno
-                buf[1] = 0; //cmd
+                buf[1] = 1; //cmd
 
                 buf[2] = (byte)pin; //pin
 
@@ -365,96 +602,33 @@ namespace Driver.MadLed
                 return buf;
             }
 
-            public MadLedDevice.PinConfig GetConfigFromPin(int pin, HidStream stream)
+            public PinConfig GetConfigFromPin(int pin, HidStream stream)
             {
-                byte[] buf = new byte[63];
-                buf[0] = 2;
-                buf[1] = 2;
+
+                byte[] buf = new byte[PacketSize];
+                buf[0] = 3;
+                buf[1] = 3;
                 buf[2] = (byte)pin;
 
 
-                SendPacket(stream, buf);
 
-                byte[] ret = new byte[63];
-
-                stream.Read(ret);
-                if (ret[1] != 128)
-                {
-                    return null;
-                }
-
-                var pc = new PinConfig();
-
-                pc.Pin = ret[2];
-                pc.LedCount = ret[3];
-                pc.DeviceClass = ret[4];
-
-                for (int i = 5; i < 5 + 16; i++)
-                {
-                    byte t = ret[i];
-
-                    if (t == 13 || t == 0)
-                    {
-                        break;
-                    }
-                    else
-                    {
-                        pc.Name = pc.Name + (char)t;
-                    }
-                }
-
-                return pc;
-
+                return SendPacket<PinConfig>(stream, buf);
             }
+
+            public byte[] GetSupportedPins() => SendPacket<byte[]>(stream, SetSupportedPinsCmd());
+
 
             public string GetSerial(HidStream stream)
             {
-                byte[] buf = new byte[63];
+                byte[] buf = new byte[PacketSize];
                 buf[0] = 5;
                 buf[1] = 5;
                 buf[2] = 5;
 
 
-                SendPacket(stream, buf);
-
-                byte[] ret = new byte[63];
-
-                string r = "";
-                stream.Read(ret);
-                if (ret[0] != 0)
-                {
-                    return null;
-                }
-                for (int i = 1; i < 1 + 16; i++)
-                {
-                    byte t = ret[i];
-
-                    if (t == 13 || t == 0)
-                    {
-                        break;
-                    }
-                    else
-                    {
-                        r = r + (char)t;
-                    }
-                }
-
-                if (!r.StartsWith("MLNG"))
-                {
-                    return null;
-                }
-
-                return r;
+                return SendPacket<string>(stream, buf);
             }
-
-            public void ReadReturnReport(HidStream stream)
-            {
-                byte[] ret = new byte[64];
-
-                stream.Read(ret);
-
-                DebugReport(ret);
-            }
+            
 
             public void DebugReport(byte[] ret)
             {
@@ -482,39 +656,7 @@ namespace Driver.MadLed
                 }
                 Console.WriteLine("");
             }
-
-            public void SetCalibration(HidStream stream)
-            {
-                byte[] buffer = new byte[64];
-                buffer[0] = 0xcc;
-                buffer[1] = 0x33;
-
-                // D_LED1 WS2812 GRB, 0x00RRGGBB to 0x00GGRRBB
-                buffer[2] = 0x02; // B
-                buffer[3] = 0x00; // G
-                buffer[4] = 0x01; // R
-                buffer[5] = 0x00;
-
-                // D_LED2 WS2812 GRB
-                buffer[6] = 0x02;
-                buffer[7] = 0x00;
-                buffer[8] = 0x01;
-                buffer[9] = 0x00;
-
-                // LED C1/C2 12vGRB, seems pins already connect to LEDs correctly
-                buffer[10] = 0x00;
-                buffer[11] = 0x01;
-                buffer[12] = 0x02;
-                buffer[13] = 0x00;
-
-                // Spare set seen in some Motherboard models
-                buffer[14] = 0x00;
-                buffer[15] = 0x01;
-                buffer[16] = 0x02;
-                buffer[17] = 0x00;
-
-                SendPacket(stream, buffer);
-            }
+            
 
             public class PinConfig
             {

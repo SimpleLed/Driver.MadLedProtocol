@@ -42,32 +42,34 @@ namespace Driver.MadLed
 
             PinsView.Items.Clear();
 
-            for (int i = 0; i < 8; i++)
+
+            var sp = madLedDevice.SupportedPins.Select((value, i) => (value, i));
+            foreach (var (t, i) in sp)
             {
-                MadLed.MadLedDevice.PinConfig pc = madLedDevice.GetConfigFromPin(i + 1, madLedDevice.stream);
-
-
                 PinViewModel mdl = null;
-                if (pc != null && pc.LedCount > 0)
+                var pp = madLedDevice.ControlDevices.FirstOrDefault(x => x.Pin == t);
+
+                if (pp == null)
                 {
                     mdl = new PinViewModel
                     {
-                        Pin = i + 1,
-                        DeviceClass = pc.DeviceClass,
-                        LedCount = pc.LedCount,
-                        Name = pc.Name
+                        Pin = t,
+                        DeviceClass = -1,
+                        LedCount = 0,
+                        Name = ""
                     };
                 }
                 else
                 {
                     mdl = new PinViewModel
                     {
-                        Pin = i + 1,
-                        DeviceClass = -1,
-                        LedCount = 0,
-                        Name = ""
+                        Pin = t,
+                        DeviceClass = Array.IndexOf(MadLed.deviceTypes, pp.DeviceType),
+                        LedCount = pp.LEDs.Length,
+                        Name = pp.Name
                     };
                 }
+
 
                 PinsView.Items.Add(mdl);
             }
@@ -97,7 +99,7 @@ namespace Driver.MadLed
 
             MadLed.MadLedDevice.PinConfig pc = new MadLed.MadLedDevice.PinConfig
             {
-                Name = mdl.Name,
+                Name = mdl.Name+"\r",
                 DeviceClass = mdl.DeviceClass,
                 Pin = mdl.Pin,
                 LedCount = mdl.LedCount
@@ -106,38 +108,42 @@ namespace Driver.MadLed
             var pcfg = madLedDevice.SetConfigCmd(mdl.Pin, pc);
             if (isPermo)
             {
-                pcfg[1] = 10;
+                pcfg[1] = 2;
             }
 
-            //var pc = config.PinConfigs[i];
-            madLedDevice.SendPacket(madLedDevice.stream, pcfg);
-            madLedDevice.ReadReturnReport(madLedDevice.stream);
+            //madLedDevice.stream.Write(pcfg,0,pcfg.Length);
+            madLedDevice.SendPacket(madLedDevice.stream,pcfg);
 
-            MadLed.MadLedControlDevice mlcd = new MadLed.MadLedControlDevice
+            //madLedDevice.ReadReturnReport(madLedDevice.stream);
+            if (mdl.LedCount > 0 && pc.DeviceClass > -1)
             {
-                ConnectedTo = "Channel " + (mdl.Pin),
-                DeviceType = MadLed.deviceTypes[pc.DeviceClass],
-                Name = pc.Name,
-                MadLedDevice = madLedDevice,
-                LEDs = new ControlDevice.LedUnit[pc.LedCount],
-                Driver = MadLed,
-                Pin = mdl.Pin
-            };
-
-            for (int p = 0; p < pc.LedCount; p++)
-            {
-                mlcd.LEDs[p] = new ControlDevice.LedUnit
+                MadLed.MadLedControlDevice mlcd = new MadLed.MadLedControlDevice
                 {
-                    Data = new ControlDevice.LEDData
-                    {
-                        LEDNumber = p
-                    },
-                    LEDName = "LED " + (p + 1),
-                    Color = new LEDColor(0, 0, 0)
+                    ConnectedTo = "Channel " + (mdl.Pin),
+                    DeviceType = MadLed.deviceTypes[pc.DeviceClass],
+                    Name = pc.Name,
+                    MadLedDevice = madLedDevice,
+                    LEDs = new ControlDevice.LedUnit[pc.LedCount],
+                    Driver = MadLed,
+                    Pin = mdl.Pin
                 };
+
+                for (int p = 0; p < pc.LedCount; p++)
+                {
+                    mlcd.LEDs[p] = new ControlDevice.LedUnit
+                    {
+                        Data = new ControlDevice.LEDData
+                        {
+                            LEDNumber = p
+                        },
+                        LEDName = "LED " + (p + 1),
+                        Color = new LEDColor(0, 0, 0)
+                    };
+                }
+
+                MadLed.InvokeAdded(mlcd);
             }
 
-            MadLed.InvokeAdded(mlcd);
             //DeviceAdded?.Invoke(this, new Events.DeviceChangeEventArgs(mlcd));
         }
 
