@@ -2,12 +2,14 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows.Controls;
 using HidSharp;
+using MarkdownUI.WPF;
 using SimpleLed;
 using DeviceTypes = SimpleLed.DeviceTypes;
 using Timer = System.Timers.Timer;
@@ -26,7 +28,6 @@ namespace Driver.MadLed
         }
 
         public static int PacketSize = 64;
-        public static int IncomingPacketSize = 65;
         public void Dispose()
         {
 
@@ -56,8 +57,6 @@ namespace Driver.MadLed
             }
         }
 
-
-        private Timer presentTimer = null;
         private float globalBrightness = 0.5f;
         public void Push(ControlDevice controlDevice)
         {
@@ -78,7 +77,7 @@ namespace Driver.MadLed
 
         public void Pull(ControlDevice controlDevice)
         {
-            
+
         }
 
         public DriverProperties GetProperties()
@@ -89,7 +88,7 @@ namespace Driver.MadLed
                 SupportsPush = true,
                 IsSource = false,
                 SupportsCustomConfig = true,
-                Id = Guid.Parse("5dcf474c-4bd0-4516-b871-f98ca885dbb0"),
+                ProductId = Guid.Parse("5dcf474c-4bd0-4516-b871-f98ca885dbb0"),
                 Author = "MadNinja",
                 Blurb = "Driver for controlling MadLed controllers.",
                 CurrentVersion = new ReleaseNumber(1, 0, 1, AutoRevision.BuildRev.BuildRevision),
@@ -107,7 +106,7 @@ namespace Driver.MadLed
             return new List<Type>();
         }
 
-        
+
 
         public T GetConfig<T>() where T : SLSConfigData
         {
@@ -137,13 +136,11 @@ namespace Driver.MadLed
         public static List<MadLedDevice> MadLedDevices = new List<MadLedDevice>();
         public void InterestedUSBChange(int VID, int PID, bool connected)
         {
-
-            //Thread.Sleep(30000);
             if (connected)
             {
                 var madLedDevices = MadLedDevice.GetMadLedDevices(VID, PID, this);
 
-                foreach(var m in madLedDevices)
+                foreach (var m in madLedDevices)
                 {
                     var remove = MadLedDevices.Where(x => x.Serial == m.Serial);
                     foreach (MadLedDevice madLedDevice in remove.ToList())
@@ -214,14 +211,11 @@ namespace Driver.MadLed
         {
             public List<MadLedControlDevice> ControlDevices = new List<MadLedControlDevice>();
             public HidStream stream = null;
-            public bool Success;
             public int VID;
             public int PID;
             public string Serial;
             public byte[] SupportedPins;
             public MadLed Driver { get; set; }
-
-
 
             private T HandleIncoming<T>(byte[] data)
             {
@@ -249,7 +243,7 @@ namespace Driver.MadLed
                         }
 
                         return (T)((object)supTempt.ToArray());
-                        
+
                     case (134):
                         var pc = new PinConfig();
 
@@ -304,7 +298,7 @@ namespace Driver.MadLed
                         }
 
                         return (T)((object)r.Substring(4).Trim());
-                        
+
 
                     default:
                         Debug.WriteLine(data[2]);
@@ -327,14 +321,15 @@ namespace Driver.MadLed
 
                         MadLedControlDevice mlcd = new MadLedControlDevice
                         {
-                            ConnectedTo = "Pin " + (pc.Pin),
+                            ChannelUniqueId = "Pin " + pc.Pin,
                             DeviceType = dt,
-                            Name = pc.Name,
+                            Name = pc.Name.Trim(),
                             MadLedDevice = this,
                             LEDs = new ControlDevice.LedUnit[pc.LedCount],
                             Driver = this.Driver,
                             Pin = pc.Pin,
                             OverrideSupport = OverrideSupport.All,
+                            CustomDeviceSpecification = new GenericCooler()
                         };
 
                         for (int p = 0; p < pc.LedCount; p++)
@@ -377,26 +372,33 @@ namespace Driver.MadLed
 
 
                 int attempts = 0;
-                
+
                 if (devices != null)
                 {
+                    int channelCount = 0;
                     foreach (HidDevice hidDevice in devices)
                     {
 
                         try
-                        { 
+                        {
 
-                        device = hidDevice;
-                         byte[] t = device.GetRawReportDescriptor();
-                         var dddd = (device.GetFriendlyName());
-                         MadLedDevice nmld = new MadLedDevice();
-                         nmld.Driver = madLed;
-                         nmld.stream = device.Open(terp);
+                            device = hidDevice;
+                            byte[] t = device.GetRawReportDescriptor();
+                            var dddd = (device.GetFriendlyName());
+                            MadLedDevice nmld = new MadLedDevice();
+                            nmld.Driver = madLed;
+                            nmld.stream = device.Open(terp);
 
-                         nmld.stream.ReadTimeout = 1000;
-                         nmld.stream.WriteTimeout = 10000;
-                            
+                            nmld.stream.ReadTimeout = 1000;
+                            nmld.stream.WriteTimeout = 10000;
+
                             string serial = nmld.GetSerial(nmld.stream);
+                            channelCount++;
+                            ControlChannel controlChannel = new ControlChannel()
+                            {
+                                Name = "MadLed " + channelCount + " (" + dddd + ")",
+                                Serial = serial
+                            };
 
                             if (!string.IsNullOrWhiteSpace(serial))
                             {
@@ -411,7 +413,7 @@ namespace Driver.MadLed
                                     var mlcd = nmld.SetUpPin(pc);
                                     if (mlcd != null)
                                     {
-
+                                        mlcd.ControlChannel = controlChannel;
                                         nmld.ControlDevices.Add(mlcd);
                                         nmld.Driver.InvokeAdded(mlcd);
 
@@ -425,7 +427,7 @@ namespace Driver.MadLed
                                 results.Add(nmld);
                             }
 
-                            
+
                         }
                         catch (Exception ep)
                         {
@@ -439,35 +441,35 @@ namespace Driver.MadLed
 
                 return results;
             }
-            
+
             public string DeviceName { get; set; }
 
 
             public T ReadUsb<T>()
             {
                 isTryingToReadUSB = true;
-                
-                    try
-                    {
-                        if (stream != null)
-                        {
-                            if (stream.CanRead)
-                            {
-                                byte[] temp = new byte[64];
-                                var t = stream.Read(temp);
 
-                                if (t > 0)
-                                {
-                                    int cmd = temp[2];
-                                    return (T)HandleIncoming<T>(temp);
-                                }
+                try
+                {
+                    if (stream != null)
+                    {
+                        if (stream.CanRead)
+                        {
+                            byte[] temp = new byte[64];
+                            var t = stream.Read(temp);
+
+                            if (t > 0)
+                            {
+                                int cmd = temp[2];
+                                return (T)HandleIncoming<T>(temp);
                             }
                         }
                     }
-                    catch
-                    {
-                    }
-                
+                }
+                catch
+                {
+                }
+
 
                 isTryingToReadUSB = false;
                 return default;
@@ -538,7 +540,7 @@ namespace Driver.MadLed
                 byte page = 0;
                 int ld = 0;
                 int nmOfLds = leds.Length / 3;
-                
+
                 while (ld < nmOfLds)
                 {
                     buf[3] = page;
@@ -628,7 +630,7 @@ namespace Driver.MadLed
 
                 return SendPacket<string>(stream, buf);
             }
-            
+
 
             public void DebugReport(byte[] ret)
             {
@@ -656,7 +658,7 @@ namespace Driver.MadLed
                 }
                 Console.WriteLine("");
             }
-            
+
 
             public class PinConfig
             {
@@ -673,9 +675,38 @@ namespace Driver.MadLed
             }
         }
 
-        public UserControl GetCustomConfig(ControlDevice controlDevice)
+        public MadLedMDUIViewModel ViewModel;
+        public MarkdownUIBundle GetCustomConfig(ControlDevice controlDevice)
         {
-            return new MadLedConfigPage(this);
+            if (ViewModel == null)
+            {
+                ViewModel = new MadLedMDUIViewModel();
+            }
+
+            ViewModel.MadLedViewDevices = new List<MadLedMDUIViewModel.MadLedViewDevice>();
+
+            foreach (var p in MadLedDevices)
+            {
+                foreach (var e in p.ControlDevices)
+                {
+                    ViewModel.MadLedViewDevices.Add(new MadLedMDUIViewModel.MadLedViewDevice
+                    {
+                        LedCount = e.LEDs.ToList().Count.ToString(),
+                        Name = e.Name,
+                        Serial = p.Serial
+                    });
+                }
+            }
+
+            string md = MarkdownReader.GetText(Assembly.GetExecutingAssembly(), "MadLedConfig.md");
+
+            return new MarkdownUIBundle
+            {
+                ViewModel = ViewModel,
+                Markdown = md
+            };
+
+            //return new MadLedConfigPage(this);
         }
 
         public bool GetIsDirty()

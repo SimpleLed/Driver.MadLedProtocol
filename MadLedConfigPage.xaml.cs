@@ -119,7 +119,6 @@ namespace Driver.MadLed
             {
                 MadLed.MadLedControlDevice mlcd = new MadLed.MadLedControlDevice
                 {
-                    ConnectedTo = "Channel " + (mdl.Pin),
                     DeviceType = MadLed.deviceTypes[pc.DeviceClass],
                     Name = pc.Name,
                     MadLedDevice = madLedDevice,
